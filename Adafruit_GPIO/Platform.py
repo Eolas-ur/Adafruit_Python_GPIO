@@ -1,5 +1,8 @@
 # Copyright (c) 2014 Adafruit Industries
+# Copyright (c) 2024 Cam Parsfield
+
 # Author: Tony DiCola
+# Author: Cam Parsfield
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -26,88 +29,119 @@ UNKNOWN          = 0
 RASPBERRY_PI     = 1
 BEAGLEBONE_BLACK = 2
 MINNOWBOARD      = 3
-JETSON_NANO       = 4
 
 def platform_detect():
-    """Detect if running on the Raspberry Pi or Beaglebone Black and return the
-    platform type.  Will return RASPBERRY_PI, BEAGLEBONE_BLACK, or UNKNOWN."""
+    """Detect if running on the Raspberry Pi, Beaglebone Black, or other platforms, and return the
+    platform type. Will return RASPBERRY_PI, BEAGLEBONE_BLACK, MINNOWBOARD, or UNKNOWN."""
+    
+    #print("Running platform detection...")  # Debugging output
+    
     # Handle Raspberry Pi
     pi = pi_version()
     if pi is not None:
+        print(f"Detected Raspberry Pi version: {pi}")  # Debugging output
         return RASPBERRY_PI
 
     # Handle Beaglebone Black
-    # TODO: Check the Beaglebone Black /proc/cpuinfo value instead of reading
-    # the platform.
     plat = platform.platform()
-    if plat.lower().find('armv7l-with-debian') > -1:
+    if 'armv7l-with-debian' in plat.lower():
         return BEAGLEBONE_BLACK
-    elif plat.lower().find('armv7l-with-ubuntu') > -1:
+    elif 'armv7l-with-ubuntu' in plat.lower():
         return BEAGLEBONE_BLACK
-    elif plat.lower().find('armv7l-with-glibc2.4') > -1:
+    elif 'armv7l-with-glibc2.4' in plat.lower():
         return BEAGLEBONE_BLACK
-    elif plat.lower().find('tegra-aarch64-with-ubuntu') > -1:
-        return JETSON_NANO
         
     # Handle Minnowboard
-    # Assumption is that mraa is installed
     try: 
         import mraa 
-        if mraa.getPlatformName()=='MinnowBoard MAX':
+        if mraa.getPlatformName() == 'MinnowBoard MAX':
             return MINNOWBOARD
     except ImportError:
         pass
     
+    print("Platform detection failed: UNKNOWN platform.")  # Debugging output
+    
     # Couldn't figure out the platform, just return unknown.
     return UNKNOWN
-
 
 def pi_revision():
     """Detect the revision number of a Raspberry Pi, useful for changing
     functionality like default I2C bus based on revision."""
     # Revision list available at: http://elinux.org/RPi_HardwareHistory#Board_Revision_History
     with open('/proc/cpuinfo', 'r') as infile:
-        for line in infile:
-            # Match a line of the form "Revision : 0002" while ignoring extra
-            # info in front of the revsion (like 1000 when the Pi was over-volted).
-            match = re.match('Revision\s+:\s+.*(\w{4})$', line, flags=re.IGNORECASE)
-            if match and match.group(1) in ['0000', '0002', '0003']:
-                # Return revision 1 if revision ends with 0000, 0002 or 0003.
-                return 1
-            elif match:
-                # Assume revision 2 if revision ends with any other 4 chars.
-                return 2
+        cpuinfo = infile.read()
+        print(cpuinfo)  # Debugging output
+        for line in cpuinfo.splitlines():
+            # Match a line of the form "Revision : 0002"
+            match = re.match(r'Revision\s+:\s+(\w+)', line, flags=re.IGNORECASE)
+            if match:
+                revision = match.group(1)
+                print(f"Detected Pi revision: {revision}")  # Debugging output
+                return revision
         # Couldn't find the revision, throw an exception.
         raise RuntimeError('Could not determine Raspberry Pi revision.')
 
-
 def pi_version():
-    """Detect the version of the Raspberry Pi.  Returns either 1, 2 or
-    None depending on if it's a Raspberry Pi 1 (model A, B, A+, B+),
-    Raspberry Pi 2 (model B+), or not a Raspberry Pi.
+    """Detect the version of the Raspberry Pi. Returns a version number (1, 2, 3, 4, 5, Zero, Pico)
+    depending on if it's a Raspberry Pi 1, 2, 3, 4, 5, Zero, Pico or None if not a Raspberry Pi.
     """
-    # Check /proc/cpuinfo for the Hardware field value.
-    # 2708 is pi 1
-    # 2709 is pi 2
-    # 2835 is pi 3 on 4.9.x kernel
-    # Anything else is not a pi.
-    with open('/proc/cpuinfo', 'r') as infile:
-        cpuinfo = infile.read()
-    # Match a line like 'Hardware   : BCM2709'
-    match = re.search('^Hardware\s+:\s+(\w+)$', cpuinfo,
-                      flags=re.MULTILINE | re.IGNORECASE)
-    if not match:
-        # Couldn't find the hardware, assume it isn't a pi.
+    print("Reading /proc/cpuinfo...")  # Debugging output
+    revision = pi_revision()
+    
+    pi_revisions = {
+        # Raspberry Pi 1 Models
+        '0002': 1,  # Model B Rev 1
+        '0003': 1,  # Model B Rev 1 (ECN0001)
+        '0004': 1,  # Model B Rev 2
+        '0005': 1,  # Model B Rev 2
+        '0006': 1,  # Model B Rev 2
+        '0007': 1,  # Model A
+        '0008': 1,  # Model A
+        '0009': 1,  # Model A
+        '000d': 1,  # Model B Rev 2
+        '000e': 1,  # Model B Rev 2
+        '000f': 1,  # Model B Rev 2
+        '0010': 1,  # Model B+
+        '0011': 1,  # Compute Module 1
+        '0012': 1,  # Model A+
+        '0013': 1,  # Model B+
+        '0014': 1,  # Compute Module 1
+        '0015': 1,  # Model A+
+        # Raspberry Pi 2 Models
+        'a01041': 2,  # Pi 2 Model B v1.1
+        'a21041': 2,  # Pi 2 Model B v1.1
+        'a22042': 2,  # Pi 2 Model B v1.2
+        # Raspberry Pi 3 Models
+        'a02082': 3,  # Pi 3 Model B
+        'a22082': 3,  # Pi 3 Model B
+        'a32082': 3,  # Pi 3 Model B (Sony, Japan)
+        'a020d3': 3,  # Pi 3 Model B+
+        '9020e0': 3,  # Pi 3 Model A+
+        # Raspberry Pi 4 Models
+        'a03111': 4,  # Pi 4 Model B
+        'b03111': 4,  # Pi 4 Model B
+        'b03112': 4,  # Pi 4 Model B
+        'c03111': 4,  # Pi 4 Model B
+        'c03112': 4,  # Pi 4 Model B
+        'a03140': 4,  # Pi 400
+        'a020a0': 4,  # Compute Module 4
+        # Raspberry Pi 5 Models
+        '9023e0': 5,  # Pi 5 Model B
+        # Raspberry Pi Zero Models
+        '900092': 'Zero',  # Pi Zero v1.2
+        '900093': 'Zero',  # Pi Zero v1.3
+        '9000c1': 'Zero',  # Pi Zero W
+        '902120': 'Zero 2 W',  # Pi Zero 2 W
+        # Raspberry Pi Pico Models
+        'e31a': 'Pico',  # Pico
+        'e31b': 'Pico',  # Pico W
+        'e31c': 'Pico',  # Pico 2
+    }
+
+    version = pi_revisions.get(revision, None)
+    if version is None:
+        print(f"Unknown Raspberry Pi revision: {revision}")  # Debugging output
         return None
-    if match.group(1) == 'BCM2708':
-        # Pi 1
-        return 1
-    elif match.group(1) == 'BCM2709':
-        # Pi 2
-        return 2
-    elif match.group(1) == 'BCM2835':
-        # Pi 3 / Pi on 4.9.x kernel
-        return 3
-    else:
-        # Something else, not a pi.
-        return None
+
+    print(f"Detected Raspberry Pi version: {version}")  # Debugging output
+    return version
